@@ -7,8 +7,7 @@ using UnityEngine.XR.WSA.Input;
 
 enum eHandState {
     None,
-    Ready,
-    Hold
+    Ready
 };
 
 public class InputManager : MonoBehaviour {
@@ -50,28 +49,21 @@ public class InputManager : MonoBehaviour {
     }
 
     void GestureEvent_HoldStarted(HoldStartedEventArgs args) {
-        if (args.source.handedness == InteractionSourceHandedness.Left) {
-            Debug.Log("Hold Started");
-            leftHandState = eHandState.Hold;
-        }
-        else if (args.source.handedness == InteractionSourceHandedness.Right) {
-            Debug.Log("Hold Started");
-            rightHandState = eHandState.Hold;
-        }
+
     }
 
     void GestureEvent_HoldCompleted(HoldCompletedEventArgs args) {
-        if (args.source.handedness == InteractionSourceHandedness.Left) {
-            leftHandState = eHandState.Ready;
-        }
-        else if (args.source.handedness == InteractionSourceHandedness.Right) {
-            rightHandState = eHandState.Ready;
-        }
+
     }
 
     private void GestureEvent_ManipulationUpdated(ManipulationUpdatedEventArgs args) {
         Debug.Log("Manipulation Updated");
-        Debug.Log(args.source.kind);
+        if (leftHandState == eHandState.None && rightHandState == eHandState.Ready && selectedObject != null) {
+            Transform transform = selectedObject.GetComponent<Transform>();
+            Vector3 deltaPosition = handPositions[1] - handPositionsLastFrame[1];
+            Debug.Log(deltaPosition);
+            transform.position += deltaPosition;
+        }
     }
 
     private void GestureEvent_ManipulationStarted(ManipulationStartedEventArgs args) {
@@ -84,7 +76,7 @@ public class InputManager : MonoBehaviour {
 
     private void GestureEvent_NavigationUpdated(NavigationUpdatedEventArgs args) {
         Debug.Log("Navigation Updated");
-        Debug.Log(args.source.handedness);
+
     }
 
     private void GestureEvent_NavigationStarted(NavigationStartedEventArgs args) {
@@ -110,15 +102,23 @@ public class InputManager : MonoBehaviour {
     }
 
     private void InteractionSourceDetected(InteractionSourceDetectedEventArgs args) {
-        Debug.Log("Interaction Source Detected");
         audioSource.PlayOneShot(handDetectedClip);
-
+        if(args.state.source.handedness == InteractionSourceHandedness.Left) {
+            leftHandState = eHandState.Ready;
+        }
+        else if (args.state.source.handedness == InteractionSourceHandedness.Right) {
+            rightHandState = eHandState.Ready;
+        }
     }
 
     private void InteractionSourceLost(InteractionSourceLostEventArgs args) {
-        Debug.Log("Interaction Source Lost");
         audioSource.PlayOneShot(handLostClip);
-
+        if (args.state.source.handedness == InteractionSourceHandedness.Left) {
+            leftHandState = eHandState.None;
+        }
+        else if (args.state.source.handedness == InteractionSourceHandedness.Right) {
+            rightHandState = eHandState.None;
+        }
     }
 
     void OnDrawGizmos() {
@@ -150,8 +150,8 @@ public class InputManager : MonoBehaviour {
         recognizer.StartCapturingGestures();
 
         audioSource = GetComponent<AudioSource>();
-        handDetectedClip = Resources.Load<AudioClip>("Audio/Jump");
-        handLostClip = Resources.Load<AudioClip>("Audio/Land");
+        handDetectedClip = Resources.Load<AudioClip>("Audio/Click");
+        handLostClip = Resources.Load<AudioClip>("Audio/Error");
     }
 
     void Start() {
@@ -176,12 +176,5 @@ public class InputManager : MonoBehaviour {
             gazeCursor.GetComponentInChildren<MeshRenderer>().enabled = false;
         }
 
-
-        if (rightHandState == eHandState.Hold && selectedObject) {
-            Transform transform = selectedObject.GetComponent<Transform>();
-            Vector3 deltaPosition = handPositions[1] - handPositionsLastFrame[1];
-            Debug.Log(deltaPosition);
-            transform.position += deltaPosition;
-        }
     }
 }
