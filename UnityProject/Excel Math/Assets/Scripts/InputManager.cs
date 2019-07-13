@@ -28,6 +28,7 @@ public class InputManager : MonoBehaviour {
     private GestureRecognizer   recognizer;
     private Vector3[]           handPositions = new Vector3[2];
     private Vector3[]           handPositionsLastFrame = new Vector3[2];
+    private Vector3             handStartManipulateVector;
 
     private AudioSource         audioSource;
 
@@ -35,18 +36,32 @@ public class InputManager : MonoBehaviour {
     private AudioClip           handDetectedClip;
     private AudioClip           handLostClip;
 
+
+
     void GestureEvent_Tapped(TappedEventArgs args) {
-        Debug.Log("Tapped");
-        if (selectedObject) {
-            selectedObject.GetComponent<Renderer>().material.color = Color.white;
-        }
+        if(args.tapCount == 1) {
+            Debug.Log("Tapped");
+            if (selectedObject) {
+                selectedObject.GetComponent<Renderer>().material.color = Color.white;
+            }
 
-        if (gazedObject) {
-            gazedObject.GetComponent<Renderer>().material.color = Color.green;
-        }
+            if (gazedObject) {
+                gazedObject.GetComponent<Renderer>().material.color = Color.green;
+            }
 
-        selectedObject = gazedObject;
+            selectedObject = gazedObject;
+        }
+        else if (args.tapCount == 2) {
+            Debug.Log("Double Tapped");
+            if (selectedObject) {
+                Transform transform = selectedObject.GetComponent<Transform>();
+                transform.position = new Vector3(0, 0, 0);
+                transform.rotation = Quaternion.Euler(0, 0, 0);
+                transform.localScale = new Vector3(0.1f, 0.1f, 0.1f);
+            }
+        }
     }
+
 
     void GestureEvent_HoldStarted(HoldStartedEventArgs args) {
 
@@ -58,16 +73,46 @@ public class InputManager : MonoBehaviour {
 
     private void GestureEvent_ManipulationUpdated(ManipulationUpdatedEventArgs args) {
         Debug.Log("Manipulation Updated");
+        Transform transform = selectedObject.GetComponent<Transform>();
+
         if (leftHandState == eHandState.None && rightHandState == eHandState.Ready && selectedObject != null) {
-            Transform transform = selectedObject.GetComponent<Transform>();
             Vector3 deltaPosition = handPositions[1] - handPositionsLastFrame[1];
-            Debug.Log(deltaPosition);
             transform.position += deltaPosition;
+        }
+        else if (leftHandState == eHandState.Ready && rightHandState == eHandState.Ready && selectedObject != null) {
+            Vector3 handsVectorLastFrame = handPositionsLastFrame[1] - handPositionsLastFrame[0];
+            Vector3 handsVectorThisFrame = handPositions[1] - handPositions[0];
+
+            float vectorLengthLastFrame = handsVectorLastFrame.magnitude;
+            float vectorLengthThisFrame = handsVectorThisFrame.magnitude;
+
+            float dot = Vector3.Dot(handsVectorThisFrame.normalized, handStartManipulateVector.normalized);
+            // Is scaling
+            if (dot > 0.99f) {
+                float dotWithUp = Vector3.Dot(handStartManipulateVector.normalized, Vector3.up);
+                // Is scaling vertically
+                if(dotWithUp > 0.5f || dotWithUp < -0.5f) {
+                    float deltaHeight = vectorLengthThisFrame - vectorLengthLastFrame;
+                    transform.localScale += new Vector3(0.0f, deltaHeight, 0.0f);
+                }
+                // Is scaling horizontally
+                else {
+                    float deltaWidth = vectorLengthThisFrame - vectorLengthLastFrame;
+                    transform.localScale += new Vector3(deltaWidth, 0.0f, deltaWidth);
+                }
+            }
+            else {
+                Vector3 rotationAxis = Vector3.Cross(handStartManipulateVector, handsVectorThisFrame).normalized;
+                transform.Rotate(rotationAxis, Vector3.Dot(handsVectorThisFrame.normalized, handsVectorLastFrame.normalized), Space.World);
+            }
         }
     }
 
     private void GestureEvent_ManipulationStarted(ManipulationStartedEventArgs args) {
         Debug.Log("Manipulation Started");
+        if (leftHandState == eHandState.Ready && rightHandState == eHandState.Ready && selectedObject != null) {
+            handStartManipulateVector = handPositions[1] - handPositions[0];
+        }
     }
 
     private void GestureEvent_ManipulationCompleted(ManipulationCompletedEventArgs args) {
