@@ -91,7 +91,7 @@ public class InputManager : MonoBehaviour {
             if (dot > 0.99f) {
                 float dotWithUp = Vector3.Dot(handStartManipulateVector.normalized, Vector3.up);
                 // Is scaling vertically
-                if(dotWithUp > 0.5f || dotWithUp < -0.5f) {
+                if(dotWithUp > 0.3f || dotWithUp < -0.3f) {
                     float deltaHeight = vectorLengthThisFrame - vectorLengthLastFrame;
                     transform.localScale += new Vector3(0.0f, deltaHeight, 0.0f);
                 }
@@ -101,6 +101,7 @@ public class InputManager : MonoBehaviour {
                     transform.localScale += new Vector3(deltaWidth, 0.0f, deltaWidth);
                 }
             }
+            // Is rotating
             else {
                 Vector3 rotationAxis = Vector3.Cross(handStartManipulateVector, handsVectorThisFrame).normalized;
                 transform.Rotate(rotationAxis, Vector3.Dot(handsVectorThisFrame.normalized, handsVectorLastFrame.normalized), Space.World);
