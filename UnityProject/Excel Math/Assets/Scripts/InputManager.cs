@@ -222,5 +222,29 @@ public class InputManager : MonoBehaviour {
             gazeCursor.GetComponentInChildren<MeshRenderer>().enabled = false;
         }
 
+        if (selectedObject && selectedObject.tag == "Triangle") {
+            Transform triangleTranform = selectedObject.GetComponent<Transform>();
+            Transform cube1 = triangleTranform.GetChild(0);
+            Transform cube2 = triangleTranform.GetChild(1);
+            Transform cube3 = triangleTranform.GetChild(2);
+
+            MeshRenderer cubeMeshRender1 = cube1.GetComponent<MeshRenderer>();
+            MeshRenderer cubeMeshRender2 = cube2.GetComponent<MeshRenderer>();
+            MeshRenderer cubeMeshRender3 = cube3.GetComponent<MeshRenderer>();
+
+            cubeMeshRender1.enabled = false;
+            cubeMeshRender2.enabled = false;
+            cubeMeshRender3.enabled = false;
+
+            if(hitResult.transform == cube1) {
+                cubeMeshRender1.enabled = true;
+            }
+            else if (hitResult.transform == cube2) {
+                cubeMeshRender2.enabled = true;
+            }
+            else if(hitResult.transform == cube3) {
+                cubeMeshRender3.enabled = true;
+            }
+        }
     }
 }
