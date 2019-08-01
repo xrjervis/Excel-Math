@@ -10,16 +10,20 @@ public class TriangleAttributesDisplay : MonoBehaviour {
 
     // Update is called once per frame
     void Update() {
-        Vector3 vert1 = transform.TransformPoint(GetComponent<MeshFilter>().mesh.vertices[0]);
-        Vector3 vert2 = transform.TransformPoint(GetComponent<MeshFilter>().mesh.vertices[1]);
-        Vector3 vert3 = transform.TransformPoint(GetComponent<MeshFilter>().mesh.vertices[2]);
 
         Transform cube1 = transform.GetChild(0);
         Transform cube2 = transform.GetChild(1);
         Transform cube3 = transform.GetChild(2);
 
-        cube1.position = vert1;
-        cube2.position = vert2;
-        cube3.position = vert3;
+        List<Vector3> vertsInModelSpace = new List<Vector3>();
+        vertsInModelSpace.Add(transform.InverseTransformPoint(cube1.position));
+        vertsInModelSpace.Add(transform.InverseTransformPoint(cube2.position));
+        vertsInModelSpace.Add(transform.InverseTransformPoint(cube3.position));
+
+        GetComponent<MeshFilter>().mesh.SetVertices(vertsInModelSpace);
+
+        SphereCollider collider = GetComponent<SphereCollider>();
+        collider.center = (vertsInModelSpace[0] + vertsInModelSpace[1] + vertsInModelSpace[2]) / 3;
+        collider.radius = Mathf.Min((vertsInModelSpace[0] - collider.center).magnitude, (vertsInModelSpace[1] - collider.center).magnitude, (vertsInModelSpace[2] - collider.center).magnitude) - 0.15f;
     }
 }

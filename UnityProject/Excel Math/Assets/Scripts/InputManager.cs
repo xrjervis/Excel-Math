@@ -5,57 +5,81 @@ using UnityEngine.XR;
 using UnityEngine.XR.WSA;
 using UnityEngine.XR.WSA.Input;
 
-enum eHandState {
+enum eHandState
+{
     None,
     Ready
 };
 
-public class InputManager : MonoBehaviour {
-    public GameObject           gazeCursor;
+public class InputManager : MonoBehaviour
+{
+    [SerializeField]
+    private GameObject gazedObject;
 
     [SerializeField]
-    private GameObject          gazedObject;
+    private GameObject selectedObject;
 
     [SerializeField]
-    private GameObject          selectedObject;
+    private eHandState leftHandState;
 
     [SerializeField]
-    private eHandState          leftHandState;
+    private eHandState rightHandState;
+
+    private GestureRecognizer recognizer;
+    private Vector3[] handPositions = new Vector3[2];
+    private Vector3[] handPositionsLastFrame = new Vector3[2];
+    private Vector3[] handStartManipulatePositions = new Vector3[2];
+    private Vector3 handStartManipulateVector;
+
+    private AudioSource audioSource;
 
     [SerializeField]
-    private eHandState          rightHandState;
+    private AudioClip handDetectedClip;
+    private AudioClip handLostClip;
 
-    private GestureRecognizer   recognizer;
-    private Vector3[]           handPositions = new Vector3[2];
-    private Vector3[]           handPositionsLastFrame = new Vector3[2];
-    private Vector3             handStartManipulateVector;
+    public GameObject handIndicator;
 
-    private AudioSource         audioSource;
-
-    [SerializeField]
-    private AudioClip           handDetectedClip;
-    private AudioClip           handLostClip;
-
-
-
-    void GestureEvent_Tapped(TappedEventArgs args) {
-        if(args.tapCount == 1) {
+    void GestureEvent_Tapped(TappedEventArgs args)
+    {
+        if (args.tapCount == 1)
+        {
             Debug.Log("Tapped");
-            if (selectedObject) {
+            if (selectedObject)
+            {
                 selectedObject.GetComponent<Renderer>().material.color = Color.white;
             }
 
-            if (gazedObject) {
+            if (gazedObject)
+            {
                 gazedObject.GetComponent<Renderer>().material.color = Color.green;
             }
 
+            if(gazedObject && gazedObject.CompareTag("Triangle"))
+            {
+                for (int i = 0; i < 3; ++i)
+                {
+                    gazedObject.transform.GetChild(i).gameObject.SetActive(true);
+                }
+            }
+            else if (gazedObject == null)
+            {
+                if(selectedObject && (selectedObject.CompareTag("Triangle") || selectedObject.CompareTag("TriangleVertex")))
+                {
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        selectedObject.transform.GetChild(i).gameObject.SetActive(false);
+                    }
+                }
+            }
             selectedObject = gazedObject;
         }
-        else if (args.tapCount == 2) {
+        else if (args.tapCount == 2)
+        {
             Debug.Log("Double Tapped");
-            if (selectedObject) {
+            if (selectedObject && !selectedObject.CompareTag("TriangleVertex"))
+            {
                 Transform transform = selectedObject.GetComponent<Transform>();
-                transform.position = new Vector3(0, 0, 0);
+                transform.position = new Vector3(0, 0, 1.2f);
                 transform.rotation = Quaternion.Euler(0, 0, 0);
                 transform.localScale = new Vector3(0.1f, 0.1f, 0.1f);
             }
@@ -63,119 +87,203 @@ public class InputManager : MonoBehaviour {
     }
 
 
-    void GestureEvent_HoldStarted(HoldStartedEventArgs args) {
+    void GestureEvent_HoldStarted(HoldStartedEventArgs args)
+    {
 
     }
 
-    void GestureEvent_HoldCompleted(HoldCompletedEventArgs args) {
+    void GestureEvent_HoldCompleted(HoldCompletedEventArgs args)
+    {
 
     }
 
-    private void GestureEvent_ManipulationUpdated(ManipulationUpdatedEventArgs args) {
+    private void GestureEvent_ManipulationUpdated(ManipulationUpdatedEventArgs args)
+    {
         Debug.Log("Manipulation Updated");
-        Transform transform = selectedObject.GetComponent<Transform>();
-
-        if (leftHandState == eHandState.None && rightHandState == eHandState.Ready && selectedObject != null) {
-            Vector3 deltaPosition = handPositions[1] - handPositionsLastFrame[1];
-            transform.position += deltaPosition;
+        // Early out
+        if (selectedObject == null)
+        {
+            return;
         }
-        else if (leftHandState == eHandState.Ready && rightHandState == eHandState.Ready && selectedObject != null) {
-            Vector3 handsVectorLastFrame = handPositionsLastFrame[1] - handPositionsLastFrame[0];
-            Vector3 handsVectorThisFrame = handPositions[1] - handPositions[0];
 
-            float vectorLengthLastFrame = handsVectorLastFrame.magnitude;
-            float vectorLengthThisFrame = handsVectorThisFrame.magnitude;
 
-            float dot = Vector3.Dot(handsVectorThisFrame.normalized, handStartManipulateVector.normalized);
-            // Is scaling
-            if (dot > 0.99f) {
-                float dotWithUp = Vector3.Dot(handStartManipulateVector.normalized, Vector3.up);
-                // Is scaling vertically
-                if(dotWithUp > 0.3f || dotWithUp < -0.3f) {
-                    float deltaHeight = vectorLengthThisFrame - vectorLengthLastFrame;
-                    transform.localScale += new Vector3(0.0f, deltaHeight, 0.0f);
-                }
-                // Is scaling horizontally
-                else {
-                    float deltaWidth = vectorLengthThisFrame - vectorLengthLastFrame;
-                    transform.localScale += new Vector3(deltaWidth, 0.0f, deltaWidth);
+        Transform objTransform = selectedObject.GetComponent<Transform>();
+
+        // Only when both hands appear can player rotate and scale
+        if (rightHandState == eHandState.Ready && leftHandState == eHandState.Ready)
+        {
+            if (!selectedObject.CompareTag("TriangleVertex"))
+            {
+                Vector3 handsVectorLastFrame = handPositionsLastFrame[1] - handPositionsLastFrame[0];
+                Vector3 handsVectorThisFrame = handPositions[1] - handPositions[0];
+
+                objTransform.localScale += Vector3.one * (handsVectorThisFrame.magnitude - handsVectorLastFrame.magnitude);
+
+                Vector3 rotateAxis = Vector3.Cross(handsVectorLastFrame, handsVectorThisFrame).normalized;
+                float cosAngle = Vector3.Dot(handsVectorLastFrame.normalized, handsVectorThisFrame.normalized);
+                float angleRadian = Mathf.Acos(cosAngle);
+                float angleDegree = angleRadian * Mathf.Rad2Deg;
+                if (angleDegree > 1.0f)
+                {
+                    objTransform.Rotate(rotateAxis, angleDegree * 1.5f, Space.World);
                 }
             }
-            // Is rotating
-            else {
-                Vector3 rotationAxis = Vector3.Cross(handStartManipulateVector, handsVectorThisFrame).normalized;
-                transform.Rotate(rotationAxis, Vector3.Dot(handsVectorThisFrame.normalized, handsVectorLastFrame.normalized), Space.World);
-            }
         }
+        else
+        {
+            // Get either of the reference position, right hand has the priority
+            Vector3 averageLastFrame = 0.5f * (handPositionsLastFrame[1] + handPositionsLastFrame[0]);
+            Vector3 averageThisFrame = 0.5f * (handPositions[1] + handPositions[0]);
+            Vector3 displacement = averageThisFrame - averageLastFrame;
+            objTransform.position += displacement * 1.5f;
+        }
+        //         if (leftHandState == eHandState.None && rightHandState == eHandState.Ready && selectedObject != null)
+        //         {
+        //             Vector3 deltaPosition = handPositions[1] - handPositionsLastFrame[1];
+        //             transform.position += deltaPosition;
+        //         }
+        //         else if (leftHandState == eHandState.Ready && rightHandState == eHandState.Ready && selectedObject != null)
+        //         {
+        //             Vector3 handsVectorLastFrame = handPositionsLastFrame[1] - handPositionsLastFrame[0];
+        //             Vector3 handsVectorThisFrame = handPositions[1] - handPositions[0];
+        // 
+        //             float vectorLengthLastFrame = handsVectorLastFrame.magnitude;
+        //             float vectorLengthThisFrame = handsVectorThisFrame.magnitude;
+        // 
+        //             float dot = Vector3.Dot(handsVectorThisFrame.normalized, handStartManipulateVector.normalized);
+        //             // Is scaling
+        //             if (dot > 0.99f)
+        //             {
+        //                 float dotWithUp = Vector3.Dot(handStartManipulateVector.normalized, Vector3.up);
+        //                 // Is scaling vertically
+        //                 if (dotWithUp > 0.3f || dotWithUp < -0.3f)
+        //                 {
+        //                     float deltaHeight = vectorLengthThisFrame - vectorLengthLastFrame;
+        //                     transform.localScale += new Vector3(0.0f, deltaHeight, 0.0f);
+        //                 }
+        //                 // Is scaling horizontally
+        //                 else
+        //                 {
+        //                     float deltaWidth = vectorLengthThisFrame - vectorLengthLastFrame;
+        //                     transform.localScale += new Vector3(deltaWidth, 0.0f, deltaWidth);
+        //                 }
+        //             }
+        //             // Is rotating
+        //             else
+        //             {
+        //                 Vector3 rotationAxis = Vector3.Cross(handStartManipulateVector, handsVectorThisFrame).normalized;
+        //                 transform.Rotate(rotationAxis, Vector3.Dot(handsVectorThisFrame.normalized, handsVectorLastFrame.normalized), Space.World);
+        //             }
+        //         }
     }
 
-    private void GestureEvent_ManipulationStarted(ManipulationStartedEventArgs args) {
+    private void GestureEvent_ManipulationStarted(ManipulationStartedEventArgs args)
+    {
         Debug.Log("Manipulation Started");
-        if (leftHandState == eHandState.Ready && rightHandState == eHandState.Ready && selectedObject != null) {
+        if(leftHandState == eHandState.Ready)
+        {
+            handStartManipulatePositions[0] = handPositions[0];
+        }
+        if(rightHandState == eHandState.Ready)
+        {
+            handStartManipulatePositions[1] = handPositions[1];
+        }
+
+        if (leftHandState == eHandState.Ready && rightHandState == eHandState.Ready && selectedObject != null)
+        {
             handStartManipulateVector = handPositions[1] - handPositions[0];
         }
     }
 
-    private void GestureEvent_ManipulationCompleted(ManipulationCompletedEventArgs args) {
+    private void GestureEvent_ManipulationCompleted(ManipulationCompletedEventArgs args)
+    {
         Debug.Log("Manipulation Completed");
+        if(leftHandState == eHandState.Ready)
+        {
+            handStartManipulatePositions[0] = Vector3.zero;
+        }
+        if(rightHandState == eHandState.Ready)
+        {
+            handStartManipulatePositions[1] = Vector3.zero;
+        }
     }
 
-    private void GestureEvent_NavigationUpdated(NavigationUpdatedEventArgs args) {
+    private void GestureEvent_NavigationUpdated(NavigationUpdatedEventArgs args)
+    {
         Debug.Log("Navigation Updated");
 
     }
 
-    private void GestureEvent_NavigationStarted(NavigationStartedEventArgs args) {
+    private void GestureEvent_NavigationStarted(NavigationStartedEventArgs args)
+    {
         Debug.Log("Navigation Started");
     }
 
-    private void GestureEvent_NavigationCompleted(NavigationCompletedEventArgs args) {
+    private void GestureEvent_NavigationCompleted(NavigationCompletedEventArgs args)
+    {
         Debug.Log("Navigation Completed");
     }
 
-    private void InteractionSourceUpdated(InteractionSourceUpdatedEventArgs args) {
+    private void InteractionSourceUpdated(InteractionSourceUpdatedEventArgs args)
+    {
         Vector3 pos;
         handPositionsLastFrame[0] = handPositions[0];
         handPositionsLastFrame[1] = handPositions[1];
-        if (args.state.sourcePose.TryGetPosition(out pos)) {
-            if (args.state.source.handedness == InteractionSourceHandedness.Left) {
+        if (args.state.sourcePose.TryGetPosition(out pos))
+        {
+            if (args.state.source.handedness == InteractionSourceHandedness.Left)
+            {
                 handPositions[0] = pos;
             }
-            else if (args.state.source.handedness == InteractionSourceHandedness.Right) {
+            else if (args.state.source.handedness == InteractionSourceHandedness.Right)
+            {
                 handPositions[1] = pos;
             }
         }
     }
 
-    private void InteractionSourceDetected(InteractionSourceDetectedEventArgs args) {
+    private void InteractionSourceDetected(InteractionSourceDetectedEventArgs args)
+    {
         audioSource.PlayOneShot(handDetectedClip);
-        if(args.state.source.handedness == InteractionSourceHandedness.Left) {
+        if (args.state.source.handedness == InteractionSourceHandedness.Left)
+        {
             leftHandState = eHandState.Ready;
         }
-        else if (args.state.source.handedness == InteractionSourceHandedness.Right) {
+        else if (args.state.source.handedness == InteractionSourceHandedness.Right)
+        {
             rightHandState = eHandState.Ready;
         }
     }
 
-    private void InteractionSourceLost(InteractionSourceLostEventArgs args) {
+    private void InteractionSourceLost(InteractionSourceLostEventArgs args)
+    {
         audioSource.PlayOneShot(handLostClip);
-        if (args.state.source.handedness == InteractionSourceHandedness.Left) {
+        if (args.state.source.handedness == InteractionSourceHandedness.Left)
+        {
             leftHandState = eHandState.None;
+            handPositions[0] = Vector3.zero;
+            handPositionsLastFrame[0] = Vector3.zero;
         }
-        else if (args.state.source.handedness == InteractionSourceHandedness.Right) {
+        else if (args.state.source.handedness == InteractionSourceHandedness.Right)
+        {
             rightHandState = eHandState.None;
+            handPositions[1] = Vector3.zero;
+            handPositionsLastFrame[1] = Vector3.zero;
         }
     }
 
-    void OnDrawGizmos() {
+    void OnDrawGizmos()
+    {
         Gizmos.color = Color.blue;
-        Gizmos.DrawWireSphere(handPositions[0], 0.2f);
+        Gizmos.DrawWireSphere(handPositions[0], 0.05f);
 
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(handPositions[1], 0.2f);
+        Gizmos.DrawWireSphere(handPositions[1], 0.05f);
+
     }
 
-    void Awake() {
+    void Awake()
+    {
         InteractionManager.InteractionSourceUpdated += InteractionSourceUpdated;
         InteractionManager.InteractionSourceDetected += InteractionSourceDetected;
         InteractionManager.InteractionSourceLost += InteractionSourceLost;
@@ -200,51 +308,32 @@ public class InputManager : MonoBehaviour {
         handLostClip = Resources.Load<AudioClip>("Audio/Error");
     }
 
-    void Start() {
-        gazeCursor = Instantiate(gazeCursor, new Vector3(0, 0, 0), Quaternion.identity);
+    void Start()
+    {
     }
 
-    void Update() {
+    void Update()
+    {
         Vector3 headPosition = this.transform.position;
         Vector3 gazeDirection = this.transform.forward;
         Debug.DrawRay(headPosition, gazeDirection, Color.red);
 
         RaycastHit hitResult;
 
-        if (Physics.Raycast(headPosition, gazeDirection, out hitResult)) {
+        if (Physics.Raycast(headPosition, gazeDirection, out hitResult))
+        {
             gazedObject = hitResult.collider.gameObject;
-            gazeCursor.GetComponentInChildren<MeshRenderer>().enabled = true;
-            gazeCursor.GetComponent<Transform>().position = hitResult.point;
-            gazeCursor.GetComponent<Transform>().rotation = Quaternion.FromToRotation(Vector3.up, hitResult.normal);
+
+            handIndicator.SetActive(true);
+            handIndicator.transform.position = headPosition + gazeDirection;
+            handIndicator.transform.LookAt(this.transform);
         }
-        else {
+        else
+        {
+
+            handIndicator.SetActive(false);
             gazedObject = null;
-            gazeCursor.GetComponentInChildren<MeshRenderer>().enabled = false;
-        }
-
-        if (selectedObject && selectedObject.tag == "Triangle") {
-            Transform triangleTranform = selectedObject.GetComponent<Transform>();
-            Transform cube1 = triangleTranform.GetChild(0);
-            Transform cube2 = triangleTranform.GetChild(1);
-            Transform cube3 = triangleTranform.GetChild(2);
-
-            MeshRenderer cubeMeshRender1 = cube1.GetComponent<MeshRenderer>();
-            MeshRenderer cubeMeshRender2 = cube2.GetComponent<MeshRenderer>();
-            MeshRenderer cubeMeshRender3 = cube3.GetComponent<MeshRenderer>();
-
-            cubeMeshRender1.enabled = false;
-            cubeMeshRender2.enabled = false;
-            cubeMeshRender3.enabled = false;
-
-            if(hitResult.transform == cube1) {
-                cubeMeshRender1.enabled = true;
-            }
-            else if (hitResult.transform == cube2) {
-                cubeMeshRender2.enabled = true;
-            }
-            else if(hitResult.transform == cube3) {
-                cubeMeshRender3.enabled = true;
-            }
         }
     }
+
 }
